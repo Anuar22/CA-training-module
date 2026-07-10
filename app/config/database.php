@@ -1,21 +1,27 @@
 <?php
+// app/config/database.php
 
 class Database
 {
     private $host = "localhost";
-    private $port = "5432";
+    private $port = "5433";
     private $dbname = "ca_training_module";
     private $username = "postgres";
     private $password = "Latifasaid@1970";
 
     private $conn;
 
+    /**
+     * Establishes a secure connection to the PostgreSQL instance
+     */
     public function connect()
     {
         if ($this->conn == null) {
             try {
+                // The explicit connection string (DSN)
                 $dsn = "pgsql:host={$this->host};port={$this->port};dbname={$this->dbname}";
 
+                // Passing username and password as separate parameters handles special characters like '@' natively
                 $this->conn = new PDO(
                     $dsn,
                     $this->username,
@@ -33,5 +39,12 @@ class Database
         }
 
         return $this->conn;
+    }
+
+    /**
+     * Helper proxy to quickly prepare database statements across models
+     */
+    public function prepare($sql) {
+        return $this->connect()->prepare($sql);
     }
 }
