@@ -13,40 +13,47 @@ class SessionModel
     }
 
     /**
-     * Create a new training session event
+     * Creates a new training event record
      */
-    public function createSession($catalogueId, $trainerName, $sessionDate, $sessionTime, $locationOrLink, $notes)
+    public function createSession($trainingId, $sessionDate, $venue, $trainer, $notes, $attachmentPath = null)
     {
-        $sql = "INSERT INTO training_sessions (catalogue_id, trainer_name, session_date, session_time, location_or_link, notes) 
-                VALUES (:catalogue_id, :trainer_name, :session_date, :session_time, :location_or_link, :notes)";
-                
+        $sql = "INSERT INTO training_sessions (training_id, session_date, venue, trainer, notes, attachment_path) 
+                VALUES (:training_id, :session_date, :venue, :trainer, :notes, :attachment_path) 
+                RETURNING session_id";
+
         $stmt = $this->db->prepare($sql);
-        $stmt->bindParam(':catalogue_id', $catalogueId, PDO::PARAM_INT);
-        $stmt->bindParam(':trainer_name', $trainerName, PDO::PARAM_STR);
+        $stmt->bindParam(':training_id', $trainingId, PDO::PARAM_INT);
         $stmt->bindParam(':session_date', $sessionDate, PDO::PARAM_STR);
-        $stmt->bindParam(':session_time', $sessionTime, PDO::PARAM_STR);
-        $stmt->bindParam(':location_or_link', $locationOrLink, PDO::PARAM_STR);
+        $stmt->bindParam(':venue', $venue, PDO::PARAM_STR);
+        $stmt->bindParam(':trainer', $trainer, PDO::PARAM_STR);
         $stmt->bindParam(':notes', $notes, PDO::PARAM_STR);
+        $stmt->bindParam(':attachment_path', $attachmentPath, PDO::PARAM_STR);
         
-        if ($stmt->execute()) {
-            // Return the auto-incremented ID of the created session so we can immediately log attendance for it
-            return $this->db->connect()->lastInsertId();
-        }
-        return false;
+        $stmt->execute();
+        $result = $stmt->fetch();
+        return $result ? $result['session_id'] : false;
     }
 
     /**
-     * Fetch all scheduled sessions alongside their mapped system names
+     * Logs an individual staff attendance status matching the database constraints: PRESENT or ABSENT
      */
-    public function getAllSessions()
+    public function logAttendance($sessionId, $staffId, $status, $absenceReason = '')
     {
-        $sql = "SELECT ts.id, tc.system_name, ts.trainer_name, ts.session_date, ts.session_time, ts.location_or_link 
-                FROM training_sessions ts
-                JOIN training_catalogue tc ON ts.catalogue_id = tc.id
-                ORDER BY ts.session_date DESC";
-                
+        // Explicitly map inputs to uppercase database constraint values
+        $dbStatus = (strtoupper($status) === 'ATTENDED' || strtoupper($status) === 'PRESENT') ? 'PRESENT' : 'ABSENT';
+
+        $sql = "INSERT INTO attendance (session_id, staff_id, status, absence_reason) 
+                VALUES (:session_id, :staff_id, :status, :absence_reason)";
+
         $stmt = $this->db->prepare($sql);
-        $stmt->execute();
-        return $stmt->fetchAll();
+        $stmt->bindParam(':session_id', $sessionId, PDO::PARAM_INT);
+        $stmt->bindParam(':staff_id', $staffId, PDO::PARAM_STR);
+        $stmt->bindParam(':status', $dbStatus, PDO::PARAM_STR);
+        
+        // Convert empty reason strings to null for clean database tracking
+        $reason = !empty($absenceReason) ? trim($absenceReason) : null;
+        $stmt->bindParam(':absence_reason', $reason, PDO::PARAM_STR);
+        
+        return $stmt->execute();
     }
 }

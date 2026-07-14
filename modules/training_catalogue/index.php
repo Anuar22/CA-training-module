@@ -1,9 +1,10 @@
 <?php
 // modules/training_catalogue/index.php
-require_once '../../app/models/CatalogueModel.php';
-require_once __DIR__ . '/app/config/config.php'; // Ensure correct relative level
-require_once __DIR__ . '/app/helpers/auth_helper.php';
+require_once '../../app/config/config.php'; 
+require_once '../../app/helpers/auth_helper.php';
 restrictToLoggedInUsers();
+require_once '../../app/models/CatalogueModel.php';
+require_once '../../app/models/SessionModel.php';
 
 $catalogueModel = new CatalogueModel();
 $message = '';

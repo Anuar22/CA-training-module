@@ -1,8 +1,12 @@
 <?php
 // modules/attendance/index.php
-
+require_once '../../app/config/config.php'; 
+require_once '../../app/helpers/auth_helper.php';
+restrictToLoggedInUsers();
 require_once '../../app/models/CatalogueModel.php';
 require_once '../../app/models/SessionModel.php';
+
+// ... rest of your modules/attendance/index.php code below ...
 
 $catalogueModel = new CatalogueModel();
 $sessionModel = new SessionModel();

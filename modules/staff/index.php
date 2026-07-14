@@ -1,8 +1,11 @@
 <?php
 // modules/staff/index.php
 
-require_once '../../app/models/StaffModel.php';
-
+require_once '../../app/config/config.php'; 
+require_once '../../app/helpers/auth_helper.php';
+restrictToLoggedInUsers();
+require_once '../../app/models/CatalogueModel.php';
+require_once '../../app/models/SessionModel.php';
 $staffModel = new StaffModel();
 $message = '';
 

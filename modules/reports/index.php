@@ -1,35 +1,27 @@
 <?php
 // modules/reports/index.php
+require_once '../../app/config/config.php';
+require_once '../../app/helpers/auth_helper.php';
+restrictToLoggedInUsers();
+
 require_once '../../app/models/ReportModel.php';
-require_once '../../app/models/StaffModel.php';
 
 $reportModel = new ReportModel();
-$staffModel = new StaffModel();
+$selectedStaffId = isset($_GET['staff_id']) ? trim($_GET['staff_id']) : '';
 
-$allStaff = $staffModel->getAllStaff();
-$selectedStaffId = isset($_GET['staff_id']) ? intval($_GET['staff_id']) : 0;
+$history = [];
+$staffData = null;
 
-$individualHistory = [];
-$outstandingMandatory = [];
-$selectedStaffDetails = null;
-
-if ($selectedStaffId > 0) {
-    $individualHistory = $reportModel->getStaffTrainingHistory($selectedStaffId);
-    $selectedStaffDetails = $staffModel->getStaffById($selectedStaffId);
-
-    // Direct database calculation query to find outstanding mandatory sessions
-    $db = new Database();
-    $sql = "SELECT id, system_name, description FROM training_catalogue 
-            WHERE is_mandatory = TRUE 
-            AND id NOT IN (
-                SELECT ts.catalogue_id FROM attendance att
-                JOIN training_sessions ts ON att.session_id = ts.id
-                WHERE att.staff_id = :staff_id AND att.status = 'Attended'
-            )";
-    $stmt = $db->prepare($sql);
-    $stmt->bindParam(':staff_id', $selectedStaffId, PDO::PARAM_INT);
-    $stmt->execute();
-    $outstandingMandatory = $stmt->fetchAll();
+if (!empty($selectedStaffId)) {
+    $history = $reportModel->getStaffTrainingHistory($selectedStaffId);
+    
+    $roster = $reportModel->getComplianceRoster();
+    foreach ($roster as $person) {
+        if ($person['unique_code'] == $selectedStaffId) {
+            $staffData = $person;
+            break;
+        }
+    }
 }
 ?>
 
@@ -37,47 +29,112 @@ if ($selectedStaffId > 0) {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Training Audit Reports</title>
+    <title>Staff Audit Profile - Corporate Apps</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
 </head>
 <body class="bg-light">
 <div class="container mt-5 mb-5">
-    <h2>Corporate Applications Training Audits</h2>
-    <div class="row mt-4">
-        <div class="col-md-4">
-            <div class="card shadow-sm border-primary mb-3">
-                <div class="card-header bg-primary text-white">Staff Selection Lookup</div>
-                <div class="card-body">
-                    <form method="GET" action="">
-                        <select name="staff_id" class="form-select" onchange="this.form.submit()">
-                            <option value="">-- Select Staff Profile --</option>
-                            <?php foreach ($allStaff as $st): ?>
-                                <option value="<?php echo $st['id']; ?>" <?php echo $selectedStaffId === $st['id'] ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($st['last_name'] . ', ' . $st['first_name']); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </form>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-dark m-0">Individual Operational Preparedness Audit</h2>
+            <p class="text-muted small">Verification ledger for individual system permissions, history and retraining tracking</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="compliance.php" class="btn btn-outline-secondary btn-sm">← Back to Compliance</a>
+            <a href="../../index.php" class="btn btn-dark btn-sm"><i class="bi bi-house-door me-1"></i>Home Dashboard</a>
+        </div>
+    </div>
+
+    <?php if (empty($selectedStaffId)): ?>
+        <div class="alert alert-info shadow-sm p-4 text-center">
+            <h5>No Staff Profile Selected</h5>
+        </div>
+    <?php elseif (!$staffData): ?>
+        <div class="alert alert-danger shadow-sm p-4 text-center">
+            <h5>Profile Identity Not Found</h5>
+        </div>
+    <?php else: ?>
+
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="card shadow-sm border-0 mb-4 text-center">
+                    <div class="card-body py-4">
+                        <div class="rounded-circle bg-dark text-white d-inline-flex align-items-center justify-content-center fw-bold mb-3" style="width: 70px; height: 70px; font-size: 1.5rem;">
+                            ID
+                        </div>
+                        <h4 class="fw-bold text-dark mb-1">Staff Reference Code</h4>
+                        <code><?php echo htmlspecialchars($staffData['unique_code']); ?></code>
+                        <hr class="my-3">
+                        <div class="text-start px-2">
+                            <p class="small m-0 text-secondary fw-bold">Department Assignment:</p>
+                            <p class="small text-dark fw-semibold mb-3"><?php echo htmlspecialchars($staffData['department']); ?></p>
+                            
+                            <p class="small m-0 text-secondary fw-bold">Current Standing:</p>
+                            <p class="m-0">
+                                <?php if ($staffData['missing_mandatory_count'] == 0): ?>
+                                    <span class="badge bg-success w-100 py-2">● Fully Compliant</span>
+                                <?php else: ?>
+                                    <span class="badge bg-danger w-100 py-2">⚠️ Gaps Flagged</span>
+                                <?php endif; ?>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm border-0 text-center bg-white p-3 border-start border-danger border-4">
+                    <h6 class="text-uppercase text-muted small fw-bold m-0">Outstanding Mandatory Courses</h6>
+                    <h1 class="fw-bold text-danger m-0 display-5"><?php echo $staffData['missing_mandatory_count']; ?></h1>
                 </div>
             </div>
-        </div>
 
-        <div class="col-md-8">
-            <?php if ($selectedStaffDetails): ?>
-                <!-- OUTSTANDING MANDATORY COMPLIANCE WINDOW -->
-                <div class="card shadow-sm border-danger mb-4">
-                    <div class="card-header bg-danger text-white fw-bold">⚠️ Outstanding Mandatory Training Gaps</div>
+            <div class="col-md-8">
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-dark text-white fw-bold">System Competency Timeline Ledger</div>
                     <div class="card-body p-0">
-                        <table class="table m-0">
-                            <thead><tr><th>System Name</th><th>Description</th></tr></thead>
+                        <table class="table table-hover table-striped align-middle m-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>System Module Name</th>
+                                    <th>Session Date</th>
+                                    <th>Status / Method</th>
+                                    <th>Exceptions</th>
+                                    <th class="text-center">Evidence Document</th>
+                                </tr>
+                            </thead>
                             <tbody>
-                                <?php if (empty($outstandingMandatory)): ?>
-                                    <tr><td colspan="2" class="text-center text-success py-3 fw-bold">✔ Compliance Met! No outstanding mandatory items.</td></tr>
+                                <?php if (empty($history)): ?>
+                                    <tr>
+                                        <td colspan="5" class="text-center py-4 text-muted small">No verified attendance history logged for this profile.</td>
+                                    </tr>
                                 <?php else: ?>
-                                    <?php foreach ($outstandingMandatory as $gap): ?>
-                                        <tr class="table-danger">
-                                            <td><strong><?php echo htmlspecialchars($gap['system_name']); ?></strong></td>
-                                            <td class="small"><?php echo htmlspecialchars($gap['description']); ?></td>
+                                    <?php foreach ($history as $log): ?>
+                                        <tr>
+                                            <td><strong><?php echo htmlspecialchars($log['system_name']); ?></strong></td>
+                                            <td><small><?php echo date('Y-m-d', strtotime($log['session_date'])); ?></small></td>
+                                            <td>
+                                                <?php if (strtoupper($log['status']) === 'PRESENT'): ?>
+                                                    <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 small">Attended</span>
+                                                    <span class="text-muted d-block mt-1" style="font-size: 0.7rem;"><i class="bi bi-geo-alt"></i> <?php echo htmlspecialchars($log['venue']); ?></span>
+                                                <?php else: ?>
+                                                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle px-2 py-1 small">Absent</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <span class="small text-muted">
+                                                    <?php echo !empty($log['absence_reason']) ? htmlspecialchars($log['absence_reason']) : '—'; ?>
+                                                </span>
+                                            </td>
+                                            <td class="text-center">
+                                                <?php if (!empty($log['attachment_path'])): ?>
+                                                    <a href="../../uploads/<?php echo urlencode($log['attachment_path']); ?>" target="_blank" class="btn btn-outline-danger btn-sm py-0 px-2 fw-bold" style="font-size: 0.8rem;">
+                                                        <i class="bi bi-file-earmark-pdf-fill"></i> View Sheet
+                                                    </a>
+                                                <?php else: ?>
+                                                    <span class="text-muted small">No File Attached</span>
+                                                <?php endif; ?>
+                                            </td>
                                         </tr>
                                     <?php endforeach; ?>
                                 <?php endif; ?>
@@ -85,42 +142,11 @@ if ($selectedStaffId > 0) {
                         </table>
                     </div>
                 </div>
-
-                <!-- HISTORICAL TRANSCRIPT WINDOW -->
-                <div class="card shadow-sm">
-                    <div class="card-header bg-dark text-white">Completed Sessions Registry</div>
-                    <div class="card-body p-0">
-                        <table class="table table-striped m-0">
-                            <thead>
-                                <tr>
-                                    <th>System</th>
-                                    <th>Date</th>
-                                    <th>Status</th>
-                                    <th>Non-Attendance Tracking Reason</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($individualHistory as $h): ?>
-                                    <tr>
-                                        <td><?php echo htmlspecialchars($h['system_name']); ?></td>
-                                        <td><?php echo $h['session_date']; ?></td>
-                                        <td>
-                                            <span class="badge <?php echo $h['status'] === 'Attended' ? 'bg-success' : 'bg-warning'; ?>">
-                                                <?php echo $h['status']; ?>
-                                            </span>
-                                        </td>
-                                        <td class="text-danger small fw-bold"><?php echo htmlspecialchars($h['absence_reason'] ?? '-'); ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            <?php else: ?>
-                <div class="alert alert-secondary text-center">Please use the left panel tool to extract data matrices.</div>
-            <?php endif; ?>
+            </div>
         </div>
-    </div>
+
+    <?php endif; ?>
+
 </div>
 </body>
 </html>
